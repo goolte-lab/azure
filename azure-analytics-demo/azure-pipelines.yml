@@ -1,0 +1,43 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  tfWorkingDir: 'terraform'
+  azureServiceConnection: 'Azure-SP-Terraform'
+
+stages:
+- stage: Terraform
+  displayName: "Terraform CI/CD"
+  jobs:
+  - job: Terraform_Deploy
+    displayName: "Terraform Init, Plan, Apply"
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: '1.7.0'
+
+    - script: terraform init
+      workingDirectory: $(tfWorkingDir)
+      displayName: 'Terraform Init'
+
+    - script: terraform plan -out=tfplan
+      workingDirectory: $(tfWorkingDir)
+      displayName: 'Terraform Plan'
+
+    - task: AzureCLI@2
+      displayName: 'Upload Terraform Plan'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az storage blob upload             --account-name mystorageacct             --container-name terraform-plans             --name tfplan_$(Build.BuildId)             --file $(tfWorkingDir)/tfplan             --overwrite true
+
+    - script: terraform apply -auto-approve tfplan
+      workingDirectory: $(tfWorkingDir)
+      displayName: 'Terraform Apply'

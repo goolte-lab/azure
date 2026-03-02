@@ -1,0 +1,13 @@
+resource_group_name          = "rg-analytics-demo"
+storage_account_name         = "stganalytics001"
+data_factory_name            = "adf-demo"
+databricks_workspace_name    = "dbx-demo"
+sql_server_name              = "sqlserverdemo001"
+sql_database_name            = "sqldb-demo"
+sql_admin_username           = "sqladmin"
+sql_admin_password           = "P@ssw0rd123!"
+
+vm_name                      = "vm-demo"
+vm_admin_username            = "vmadmin"
+vm_admin_password            = "VmP@ss123!"
+subnet_id                    = "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/rg-analytics-demo/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/default"
