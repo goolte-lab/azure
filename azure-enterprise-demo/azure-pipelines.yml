@@ -1,0 +1,108 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  terraformVersion: '1.7.5'
+  azureServiceConnection: 'Azure-Service-Connection-Name'
+
+stages:
+
+# ====================================
+# Stage 1 - Deploy DevOps Agents
+# ====================================
+- stage: Deploy_Agents
+  displayName: Deploy DevOps Agent Infrastructure
+
+  jobs:
+  - job: Terraform_Agents
+    displayName: Terraform Agents
+    pool:
+      vmImage: 'ubuntu-latest'   # change to self-hosted if needed
+
+    steps:
+
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+
+    - task: AzureCLI@2
+      displayName: Terraform Init
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform-agents
+          terraform init
+
+    - task: AzureCLI@2
+      displayName: Terraform Plan
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform-agents
+          terraform plan -out=tfplan
+
+    - task: AzureCLI@2
+      displayName: Terraform Apply
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform-agents
+          terraform apply -auto-approve tfplan
+
+
+# ====================================
+# Stage 2 - Deploy Database Stack
+# ====================================
+- stage: Deploy_Database
+  displayName: Deploy Analytics Infrastructure
+  dependsOn: Deploy_Agents
+
+  jobs:
+  - job: Terraform_Database
+    displayName: Terraform Database
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+
+    - task: AzureCLI@2
+      displayName: Terraform Init
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform-database
+          terraform init
+
+    - task: AzureCLI@2
+      displayName: Terraform Plan
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform-database
+          terraform plan -out=tfplan
+
+    - task: AzureCLI@2
+      displayName: Terraform Apply
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform-database
+          terraform apply -auto-approve tfplan
