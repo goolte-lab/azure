@@ -1,0 +1,186 @@
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  terraformVersion: '1.7.5'
+  azureServiceConnection: 'Azure-Service-Connection-Name'
+
+stages:
+# Stage 1 - Validate
+- stage: Validate
+  displayName: "Validate Terraform"
+  jobs:
+  - job: Validate
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+    - script: |
+        cd terraform/agents
+        terraform init -backend=false
+        terraform fmt -check
+        terraform validate
+      displayName: "Validate Agents"
+    - script: |
+        cd terraform/database
+        terraform init -backend=false
+        terraform fmt -check
+        terraform validate
+      displayName: "Validate Database"
+
+# Stage 2 - Dev Plan & Apply
+- stage: Plan_Dev
+  dependsOn: Validate
+  displayName: "Plan - Dev"
+  jobs:
+  - job: PlanDev
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform/database
+          terraform init
+          terraform plan -var-file=../../environments/dev.tfvars -out=tfplan
+    - publish: terraform/database/tfplan
+      artifact: dev-plan
+
+- stage: Apply_Dev
+  dependsOn: Plan_Dev
+  displayName: "Apply - Dev"
+  jobs:
+  - deployment: DeployDev
+    environment: Dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: dev-plan
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: $(terraformVersion)
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd terraform/database
+                terraform init
+                terraform apply -auto-approve tfplan
+
+# Stage 3 - Test Plan & Apply with Approval
+- stage: Plan_Test
+  dependsOn: Apply_Dev
+  displayName: "Plan - Test"
+  jobs:
+  - job: PlanTest
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform/database
+          terraform init
+          terraform plan -var-file=../../environments/test.tfvars -out=tfplan
+    - publish: terraform/database/tfplan
+      artifact: test-plan
+
+- stage: Apply_Test
+  dependsOn: Plan_Test
+  displayName: "Apply - Test"
+  jobs:
+  - deployment: DeployTest
+    environment: Test   # Manual approval required in DevOps UI
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: test-plan
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: $(terraformVersion)
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd terraform/database
+                terraform init
+                terraform apply -auto-approve tfplan
+
+# Stage 4 - Prod Plan & Apply with Approval
+- stage: Plan_Prod
+  dependsOn: Apply_Test
+  displayName: "Plan - Production"
+  jobs:
+  - job: PlanProd
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          cd terraform/database
+          terraform init
+          terraform plan -var-file=../../environments/prod.tfvars -out=tfplan
+    - publish: terraform/database/tfplan
+      artifact: prod-plan
+
+- stage: Apply_Prod
+  dependsOn: Plan_Prod
+  displayName: "Apply - Production"
+  jobs:
+  - deployment: DeployProd
+    environment: Production   # Manual approval required
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: prod-plan
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: $(terraformVersion)
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd terraform/database
+                terraform init
+                terraform apply -auto-approve tfplan
